@@ -4,13 +4,46 @@ from PIL import Image
 from PIL import ImageDraw
 from PIL import ImageFont
 import numpy as np
+from skimage.metrics import structural_similarity as compare_ssim
+from skimage.metrics import peak_signal_noise_ratio as compare_psnr
+
+def calculate_ssim_psnr(image_path1, image_path2):
+    img1 = Image.open(image_path1)
+    img2 = Image.open(image_path2)
+    if img1.mode == 'RGB':
+        img1 = img1.convert('RGB')
+        img2 = img2.convert('RGB')
+        channels = 3
+    elif img1.mode == 'L':
+        channels = 1
+    else:
+        raise ValueError(f"不支持的图像模式: {img1.mode}")
+    if img1.size != img2.size:
+        raise ValueError("两张图片的尺寸不一致！")
+    img1_np = np.array(img1)
+    img2_np = np.array(img2)
+    if channels == 3:
+        ssim_total = 0
+        psnr_total = 0
+        for i in range(3):
+            ssim, _ = compare_ssim(img1_np[:, :, i], img2_np[:, :, i], full=True)
+            psnr = compare_psnr(img1_np[:, :, i], img2_np[:, :, i])
+            ssim_total += ssim
+            psnr_total += psnr
+        ssim_average = ssim_total / 3
+        psnr_average = psnr_total / 3
+    else:
+        ssim_average, _ = compare_ssim(img1_np, img2_np, full=True)
+        psnr_average = compare_psnr(img1_np, img2_np)
+    
+    return ssim_average, psnr_average
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.set_default_device(device)
 
 preprocess = transforms.Compose([
-    transforms.Resize(256), 
-    transforms.CenterCrop(224),  
+    transforms.Resize([512,512]),  
     transforms.ToTensor()])
 
 def image_loader(image_name):
@@ -21,12 +54,11 @@ def image_loader(image_name):
     image = preprocess(image).unsqueeze(0)
     return image.to(device, torch.float)
 
-def gram_matrix(activations):
-    batch_size, height, width, num_channels = activations.size()
-    gram_matrix = activations.permute(0, 3, 1, 2)
-    gram_matrix = gram_matrix.reshape(num_channels * batch_size, width * height)
-    gram_matrix = torch.mm(gram_matrix, gram_matrix.t())
-    return gram_matrix.div(batch_size * height * width * num_channels)
+def gram_matrix(input):
+    a, b, c, d = input.size()
+    features = input.view(a * b, c * d) 
+    G = torch.mm(features, features.t())
+    return G.div(a * b * c * d)
 
 def print_prob(prob, file_path):
     synset = [l.strip() for l in open(file_path).readlines()]
@@ -38,8 +70,7 @@ def print_prob(prob, file_path):
     return top1, prob[pred[0]]
 
 compose = transforms.Compose([
-    transforms.Resize(256), 
-    transforms.CenterCrop(224)])
+    transforms.Resize([512,512])])
  
 def add_text_to_image(image_path, output_path, text, font_path='arial.ttf', font_size=30, text_color=(255, 255, 255)):   
     if isinstance(image_path, str):
@@ -49,11 +80,11 @@ def add_text_to_image(image_path, output_path, text, font_path='arial.ttf', font
     image = compose(image)
     draw = ImageDraw.Draw(image)  
     font = ImageFont.truetype(font_path, font_size)  
-    text_width = draw.textlength(text, font)  
+    text_width = draw.textlength(text.split("\n")[0], font)  
     image_width, image_height = image.size  
     x = (image_width - text_width) / 2
     y = image_height  
-    vertical_spacing = 40
+    vertical_spacing = 160
     y -= vertical_spacing  
     draw.text((x, y), text, font=font, fill=text_color)   
     image.save(output_path)  

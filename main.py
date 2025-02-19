@@ -15,7 +15,7 @@ if torch.cuda.is_available():
     torch.cuda.manual_seed_all(42)
 parser = argparse.ArgumentParser()
 parser.add_argument("--content_image_folder", dest='content_image_folder',
-                    help="Path to the content image",default='./data/sub_imagenet/img')
+                    help="Path to the content image",default='.\\data\\sub_imagenet\\img')
 parser.add_argument("--style_image_path",   dest='style_image_path',
                     help="Path to the style image",default='./data/image.png')
 
